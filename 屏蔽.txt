@@ -129,6 +129,7 @@
 ||truthfeed.com^
 ||truthwins.com^
 ||thegatewaypundit.com^
+||voachinese.com^
 
 ! ==== 通用不健康内容及谣言扩展===
 ||hoax-alert.com^
