@@ -1,0 +1,193 @@
+! ===== 字节跳动广告/跟踪屏蔽（不屏蔽官网主站，例如douyin.com等） =====
+
+! 屏蔽字节跳动广告及跟踪子域和专用域名
+||ad.toutiao.com^
+||s19.cn^
+||analytics.snssdk.com^
+||ad.snssdk.com^
+||ad.api.ixigua.com^
+||aweme.snssdk.com^
+||log.snssdk.com^
+||count.api.ienia.snssdk.com^
+||kuaishou.com/common/ad/*$domain=~kuaishou.com
+||kuaishouapi.com/ad/*
+||pipix.com/ad/*
+
+! === 腾讯广告与跟踪（屏蔽腾讯广告域及数据统计域，避免屏蔽QQ微信核心服务） ===
+
+||mta.qq.com^
+||pingma.qq.com^
+||ccspeaker.qq.com^
+||open.weixin.qq.com/ads$domain=weixin.qq.com
+||ads.video.qq.com^
+||ad.weixin.qq.com^
+
+! 白名单保持主要App或官网正常访问
+@@||qq.com^$document
+@@||wechat.com^$document
+@@||weixin.qq.com^$document
+
+! === 阿里巴巴广告跟踪屏蔽（不屏蔽taobao.com，屏蔽广告请求和营销域名） ===
+
+||alimama.com^
+||alimama.net^
+||atpanel.com^
+||atpanels.com^
+||powertp.com^
+||trade.alibaba.com^$domain=~alibaba.com
+||adama.alibaba.com^
+
+! 白名单
+@@||taobao.com^$document
+@@||tmall.com^$document
+@@||alipay.com^$document
+
+! === 百度广告与统计 ===
+
+||cpro.baidu.com^
+||pos.baidu.com^
+||bce.baidu.com^
+||btrace.baidu.com^
+||analytics.baidu.com^
+
+! 白名单百度搜索和主要产品
+@@||baidu.com^$document
+
+! === 美团点评广告及跟踪 ===
+
+||ad0.meituan.net^
+||ad0.dpfile.com^
+||ad0.dianping.com^
+||ad1.meituan.net^
+||ad1.dpfile.com^
+||ads.meituan.net^
+||mstat.meituan.net^
+
+! 白名单主站
+@@||meituan.com^$document
+@@||dianping.com^$document
+
+! === 其他常见跟踪和广告字段屏蔽通配符 ===
+
+||*ads.*
+||*adserver.*
+||*adservice.*
+||*tracking.*
+||*analytics.*
+||*pixel.*
+
+! 注意：以上通配符规则会较广泛屏蔽部分广告和跟踪域，但不会导致主要品牌官网页面被屏蔽，
+! 保留了官网主文档请求的白名单（@@开头），防止正常功能受影响。
+
+
+! ==== 广告屏蔽（常见广告域，继续扩展） ====
+||ads.adbrite.com^
+||ads.betweendigital.com^
+||ads.contextweb.com^
+||ads.exponential.com^
+||ads.servebom.com^
+||ads.stickyadstv.com^
+||ads.w55c.net^
+||adfarm.mediaplex.com^
+||adfit.brave.com^
+||advertising.com^
+||advertisingapi.com^
+||adtechus.com^
+||adtraction.com^
+||adxpansion.com^
+||adzerk.net^
+||mediaforge.com^
+||optimizely.com^
+
+! ==== 成年内容相关扩展 ====
+||drtuber.com^
+||eporner.com^
+||hclips.com^
+||javhub.net^
+||porn.com^
+||pornhd.com^
+||porntime.com^
+||pornoxo.com^
+||spankwire.com^
+||tnaflix.com^
+||tube8.com^
+||xhamster.com^
+||xvideos.com^
+||youporn.com^
+
+! ==== 政治和阴谋论扩展 ====
+||alexjones.com^
+||conservativepapers.com^
+||conservativetribune.com^
+||rightwingnews.com^
+||theblaze.com^
+||thefreethoughtproject.com^
+||beforeitsnews.com^
+||freedomoutpost.com^
+||naturalnews.com^
+||worldtruth.tv^
+||truthfeed.com^
+||truthwins.com^
+||thegatewaypundit.com^
+
+! ==== 通用不健康内容及谣言扩展===
+||hoax-alert.com^
+||fakenews.com^
+||fake-news.net^
+||scam-alert.net^
+||clickbait.com^
+||sensationalnews.com^
+
+! ==== 武器、暴力内容扩展 ====
+||gunsamerica.com^
+||gunbroker.com^
+||gunmother.com^
+||armory.com^
+
+! ==== 赌博及博彩相关 ====
+||bet365.com^
+||betfair.com^
+||pokerstars.com^
+||888poker.com^
+||casumo.com^
+||williamhill.com^
+
+! ==== 毒品及非法商品相关 ====
+||silkroadonionmarket.com^
+||darkwebmarkets.com^
+||blackmarket.com^
+
+! ==== 其它垃圾站、钓鱼、假新闻站点（示范） ====
+||malwaredomainlist.com^
+||phishing.org^
+||scamwarners.com^
+||fakeupdates.com^
+
+! ==== 性、暴力、恶心内容关键词屏蔽（带通配符） ====
+||*sex*
+||*porn*
+||*xxx*
+||*nude*
+||*erotic*
+||*hardcore*
+||*fetish*
+||*boobs*
+||*xxxvideos*
+||*adult*
+||*camgirl*
+||*prostitute*
+||*escort*
+||*hooker*
+||*violence*
+||*kill*
+||*gore*
+||*torture*
+
+! ==== 弹窗和跳转骚扰屏蔽（通用） ====
+||*popup*
+||*clickbait*
+||*forcedRedirect*
+||*redirect*
+||*ads*
+
+
