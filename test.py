@@ -7,19 +7,19 @@ app.secret_key = "better-secret"
 UPLOAD_ROOT = 'uploads'
 os.makedirs(UPLOAD_ROOT, exist_ok=True)   # Ensure upload directory exists
 
-def safe_join(base, *paths):                                          # Safely join paths to prevent directory traversal
-    final_path = os.path.abspath(os.path.join(base, *paths))          # Get absolute target path
-    if not final_path.startswith(os.path.abspath(base)):              # Ensure it stays inside base
+def safe_join(base, *paths):                                              # Prevent directory traversal
+    final_path = os.path.abspath(os.path.join(base, *paths))
+    if not final_path.startswith(os.path.abspath(base)):
         abort(403)
     return final_path
 
-def make_dir_tree(root_path, rel_path=""):                            # Recursively construct directory tree as nested dict/list
+def make_dir_tree(root_path, rel_path=""):                                # Recursively return all folders as nested dict
     nodes = []
     for item in sorted(os.listdir(root_path)):
-        if item.startswith('.'): continue                             # Skip hidden files/folders
+        if item.startswith('.'): continue
         abs_item = os.path.join(root_path, item)
-        item_rel = os.path.join(rel_path, item).replace("\\", "/")    # Platform independent
-        if os.path.isdir(abs_item):                                   # If folder, recursively add children
+        item_rel = os.path.join(rel_path, item).replace("\\", "/")
+        if os.path.isdir(abs_item):
             nodes.append({
                 "name": item,
                 "path": item_rel,
@@ -60,18 +60,18 @@ def index():
     <div class="row">
         <div id="sidebar" class="col-3 px-2">
             <div class="d-flex justify-content-between mb-2">
-                <strong style="font-size:18px;">Directories</strong>      <!-- Sidebar title -->
-                <button id="btn-create-root-folder" class="btn golden-btn btn-sm" title="Create folder in root">New</button>
+                <strong style="font-size:18px;">Directories</strong>
+                <!-- No "New" button here per user requirement -->
             </div>
             <div style="max-height:77vh; overflow:auto;">
                 <ul id="folder-tree" class="folder-tree"></ul>           <!-- Sidebar directory tree -->
             </div>
         </div>
         <div class="col-9">
-            <div id="path-breadcrumb" class="breadcrumb-golden mb-2"></div>  <!-- Breadcrumbs -->
+            <div id="path-breadcrumb" class="breadcrumb-golden mb-2"></div>
             <div class="golden-card p-2 mb-3 border rounded shadow-sm">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <input type="file" id="input-upload-files" class="form-control form-control-sm" multiple style="max-width:240px;">  <!-- Multi-file upload -->
+                    <input type="file" id="input-upload-files" class="form-control form-control-sm" multiple style="max-width:240px;">
                     <button id="btn-upload" class="btn golden-btn btn-sm">Upload</button>
                     <button id="btn-create-folder" class="btn golden-btn btn-sm">New Folder</button>
                 </div>
@@ -80,12 +80,10 @@ def index():
                 <table id="file-table" class="table align-middle table-hover mb-0">
                     <thead>
                         <tr>
-                            <th>Name</th><th>Type</th><th>Action</th>     <!-- Table headers -->
+                            <th>Name</th><th>Type</th><th>Action</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <!-- File and folder content -->
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -95,33 +93,33 @@ def index():
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script>
 // ---------------------- Frontend Variables ----------------------------
-let currentDirPath = "";                       // Current folder path (e.g. "foo/bar")
-let draggedItemPath = null;                    // Path of the item being dragged
-let draggedRowType = null;                     // Type ("file"/"folder") of item being dragged
-let folderTreeData = [];                       // Directory tree data structure
+let current_dir_path = "";                      // Current folder path (e.g. "foo/bar")
+let dragged_item_path = null;                   // Path of the item being dragged
+let dragged_item_type = null;                   // Type ("file"/"folder")
+let folder_tree_data = [];                      // Directory tree structure
 
-function reloadSidebarAndContent(focusPath) {                                   // Reload sidebar and right content pane
-    fetchDirTree().then(() => {
-        renderFolderTree(focusPath!==undefined ? focusPath : currentDirPath);
+function reload_sidebar_and_content(focus_path) {                                   // Reload both tree and right pane
+    fetch_dir_tree().then(() => {
+        render_folder_tree(focus_path!==undefined ? focus_path : current_dir_path);
     });
-    fetchFileList(currentDirPath);
+    fetch_file_list(current_dir_path);
 }
-function fetchDirTree() {                                                        // Get folder tree data from server
+function fetch_dir_tree() {
     return $.get("/api/tree", function(data){
-        folderTreeData = data;
+        folder_tree_data = data;
     });
 }
-function fetchFileList(dirPath) {                                               // Get folder/file listing for current folder
-    $.get('/api/list', {path:dirPath}, function(resp){
-        renderBreadcrumb(dirPath);
-        renderFileTable(resp.dirs, resp.files);
+function fetch_file_list(dir_path) {
+    $.get('/api/list', {path:dir_path}, function(resp){
+        render_breadcrumb(dir_path);
+        render_file_table(resp.dirs, resp.files);
     });
 }
-function renderBreadcrumb(dirPath) {                                            // Render top breadcrumb navigation
+function render_breadcrumb(dir_path) {
     let crumbs = [`<span data-bc="">Root</span>`];
     let p = "";
-    if(dirPath){
-        dirPath.split('/').filter(Boolean).forEach(function(seg){
+    if(dir_path){
+        dir_path.split('/').filter(Boolean).forEach(function(seg){
             p = p ? p + "/" + seg : seg;
             crumbs.push(`<span>▶</span><span data-bc="${p}">${seg}</span>`);
         });
@@ -129,13 +127,13 @@ function renderBreadcrumb(dirPath) {                                            
     $('#path-breadcrumb').html(crumbs.join(""));
     $('#path-breadcrumb span[data-bc]').css({"cursor":"pointer", "color":"#be8200"});
     $('#path-breadcrumb span[data-bc]').click(function(){
-        let path = $(this).data('bc');              // Go to folder if breadcrumb clicked
-        currentDirPath = path || "";
-        fetchFileList(currentDirPath);
-        renderFolderTree(currentDirPath);
+        let path = $(this).data('bc');
+        current_dir_path = path || "";
+        fetch_file_list(current_dir_path);
+        render_folder_tree(current_dir_path);
     });
 }
-function renderFileTable(dirs, files) {                                         // Render right-side file list table
+function render_file_table(dirs, files) {
     const tbody = $("#file-table tbody").empty();
     dirs.forEach(function(name){
         let row = $(`
@@ -147,12 +145,12 @@ function renderFileTable(dirs, files) {                                         
             </td>
         </tr>`);
         row.find(".name-text").click(function(){
-            currentDirPath = currentDirPath ? (currentDirPath + "/" + name) : name;      // Enter folder on name click
-            fetchFileList(currentDirPath);
-            renderFolderTree(currentDirPath);
+            current_dir_path = current_dir_path ? (current_dir_path + "/" + name) : name;
+            fetch_file_list(current_dir_path);
+            render_folder_tree(current_dir_path);
         });
-        row.find(".a-delete").click(function(){ ajaxDelete(currentDirPath+"/"+name); return false; });   // AJAX delete call
-        attachRowEvents(row, name, "folder", currentDirPath + "/" + name);             // Attach drag/drop and context menu
+        row.find(".a-delete").click(function(){ ajax_delete(current_dir_path + "/" + name); return false; });
+        attach_row_events(row, name, "folder", current_dir_path + "/" + name);
         tbody.append(row);
     });
     files.forEach(function(name){
@@ -161,109 +159,107 @@ function renderFileTable(dirs, files) {                                         
             <td><span class="file-ico">📄</span> <span class="name-text">${name}</span></td>
             <td>File</td>
             <td>
-                <a href="/download?path=${encodeURIComponent(currentDirPath ? currentDirPath + "/" + name : name)}" class="text-primary me-2" target="_blank">Download</a>
+                <a href="/download?path=${encodeURIComponent(current_dir_path ? current_dir_path + "/" + name : name)}" class="text-primary me-2" target="_blank">Download</a>
                 <a href="#" class="a-delete text-danger">Delete</a>
             </td>
         </tr>`);
-        row.find(".a-delete").click(function(){ ajaxDelete(currentDirPath+"/"+name); return false; });   // AJAX delete call
-        attachRowEvents(row, name, "file", currentDirPath + "/" + name);
+        row.find(".a-delete").click(function(){ ajax_delete(current_dir_path + "/" + name); return false; });
+        attach_row_events(row, name, "file", current_dir_path + "/" + name);
         tbody.append(row);
     });
 }
-function attachRowEvents(row, name, type, absPath) {                           // Attach drag & drop and context menu to row
+function attach_row_events(row, name, type, abs_path) {
     row.on("dragstart", function(e){
-        draggedItemPath = absPath; draggedRowType = type;                      // Start drag
+        dragged_item_path = abs_path; dragged_item_type = type;
     });
     row.on("dragend", function(e){
-        draggedItemPath = null; draggedRowType=null;                           // End drag
+        dragged_item_path = null; dragged_item_type = null;
     });
-    row.on("dragover", function(e){
-        if(type==="folder") e.preventDefault();                                // Allow drop on folders only
-    });
+    row.on("dragover", function(e){ e.preventDefault(); }); // Allow folder<=>folder moves: handled on drop
     row.on("drop", function(e){
-        if(type==="folder" && draggedItemPath && draggedItemPath!==absPath){
-            ajaxMove(draggedItemPath, absPath);                                // AJAX move
+        if(dragged_item_path && dragged_item_path !== abs_path) {
+            if(type === "folder") { // Only allow drop ONTO folders
+                ajax_move(dragged_item_path, abs_path);
+            }
         }
     });
     row.on("contextmenu", function(e){
         e.preventDefault();
-        showContextMenu(e.pageX,e.pageY,name,type,absPath,row);                // Show context menu on right click
+        show_context_menu(e.pageX, e.pageY, name, type, abs_path, row);
     });
 }
-function ajaxDelete(itemPath) {                                                // AJAX delete file/folder
+function ajax_delete(item_path) {
     if(!confirm("Are you sure to delete?")) return;
     $.ajax({
         url: "/api/delete", type:"POST",
         contentType:"application/json",
-        data: JSON.stringify({path: itemPath}),
+        data: JSON.stringify({path: item_path}),
         success: function(res){
             if(res.code) alert(res.msg||"Delete failed");
-            reloadSidebarAndContent();
+            reload_sidebar_and_content();
         }
     });
 }
-function ajaxMove(src, dst){                                                   // AJAX move/rename file/folder
+function ajax_move(src, dst) {
     $.ajax({
         url:"/api/move",type:"POST",
         contentType:"application/json",
-        data:JSON.stringify({src:src, dst:dst}),
+        data: JSON.stringify({src:src, dst:dst}),
         success:function(res){
             if(res.code) alert(res.msg);
-            reloadSidebarAndContent();
+            reload_sidebar_and_content();
         }
     });
 }
-function ajaxRename(itemPath, oldName, type){                                  // AJAX rename logic (by move)
-    let newName = prompt("Rename:", oldName);
-    if(!newName || newName===oldName) return;
-    let dstDir = itemPath.substr(0, itemPath.lastIndexOf("/"));
-    let dstPath = dstDir ? dstDir + "/" + newName : newName;
+function ajax_rename(item_path, old_name, type) {
+    let new_name = prompt("Rename:", old_name);
+    if(!new_name || new_name === old_name) return;
+    let dst_dir = item_path.includes("/") ? item_path.substr(0, item_path.lastIndexOf("/")) : "";
     $.ajax({
-        url:"/api/move",type:"POST",
-        contentType:"application/json",
-        data: JSON.stringify({src:itemPath, dst:dstDir}),
+        url: "/api/move", type:"POST",
+        contentType: "application/json",
+        data: JSON.stringify({ src: item_path, dst: dst_dir, new_name: new_name }),
         success: function(res){
             if(res.code){ alert(res.msg); return;}
-            if(type==="folder") renderFolderTree(dstDir);
-            reloadSidebarAndContent(dstDir);
+            reload_sidebar_and_content(dst_dir);
         }
     });
 }
-function ajaxCreateFolder(parentPath){                                         // AJAX create folder
+function ajax_create_folder(parent_path) {
     let name = prompt("New folder name:");
     if(!name) return;
-    $.post("/api/mkdir", {path:parentPath||"", name:name}, function(res){
+    $.post("/api/mkdir", {path:parent_path||"", name:name}, function(res){
         if(res.code) alert(res.msg);
-        reloadSidebarAndContent(parentPath);
+        reload_sidebar_and_content(parent_path);
     });
 }
-function renderFolderTree(highlightPath) {                                 // Render the directory tree recursively
+function render_folder_tree(highlight_path) {
     $("#folder-tree").empty();
-    function _recur(nodes, basePath) {
+    function _recur(nodes, base_path) {
         let ul = $("<ul>");
         nodes.forEach(function(nd){
             let li = $(`<li><span class="folder-ico">📁</span> <span class="tree-folder-name">${nd.name}</span></li>`);
             let abs = nd.path;
             li.attr("data-path", abs);
-            if(abs===highlightPath) li.addClass("selected");
+            if(abs === highlight_path) li.addClass("selected");
             li.find(".tree-folder-name").click(function(e){
                 e.stopPropagation();
-                currentDirPath = abs;                                            // Change directory on click
-                fetchFileList(currentDirPath);
-                renderFolderTree(currentDirPath);
+                current_dir_path = abs;
+                fetch_file_list(current_dir_path);
+                render_folder_tree(current_dir_path);
             });
             li.get(0).draggable = true;
-            li.on("dragstart", function(){ draggedItemPath=abs; draggedRowType="folder"; });
-            li.on("dragend", function(){ draggedItemPath=null; draggedRowType=null;});
-            li.on("dragover", function(e){e.preventDefault();});
+            li.on("dragstart", function(){ dragged_item_path = abs; dragged_item_type = "folder"; });
+            li.on("dragend", function(){ dragged_item_path = null; dragged_item_type = null; });
+            li.on("dragover", function(e){ e.preventDefault(); });
             li.on("drop", function(e){
-                if(draggedItemPath && draggedItemPath!==abs){
-                    ajaxMove(draggedItemPath, abs);                              // Move dragged item here
+                if(dragged_item_path && dragged_item_path !== abs) {
+                    ajax_move(dragged_item_path, abs);
                 }
             });
             li.on("contextmenu", function(e){
                 e.preventDefault();
-                showContextMenu(e.pageX,e.pageY, nd.name,"folder", abs, li);     // Show context menu for right click
+                show_context_menu(e.pageX, e.pageY, nd.name,"folder", abs, li);
             });
             if(nd.children && nd.children.length>0)
                 li.append(_recur(nd.children, abs));
@@ -271,46 +267,43 @@ function renderFolderTree(highlightPath) {                                 // Re
         });
         return ul;
     }
-    $("#folder-tree").append(_recur(folderTreeData, ""));
+    $("#folder-tree").append(_recur(folder_tree_data, ""));
 }
-function showContextMenu(x, y, name, type, absPath, jqElem){                // Show right click context menu
-    hideContextMenu();
+function show_context_menu(x, y, name, type, abs_path, jq_elem) {
+    hide_context_menu();
     $(".file-row,.folder-tree li").removeClass("selected");
-    jqElem&&jqElem.addClass("selected");
+    jq_elem && jq_elem.addClass("selected");
     let menu = $("#context-menu");
     let items = [];
     if(type==="folder"){
         items = [
-            {txt:"New Subfolder",cb:()=>{ajaxCreateFolder(absPath);}},
-            {txt:"Upload Here",cb:()=>{currentDirPath=absPath;fetchFileList(absPath);$("#input-upload-files").click();}},
-            {txt:"Rename",cb:()=>{ajaxRename(absPath, name, type);}},
-            {txt:"Delete",cb:()=>{ajaxDelete(absPath);}}
+            {txt:"Rename",cb:()=>{ajax_rename(abs_path, name, type);}},
+            {txt:"Delete",cb:()=>{ajax_delete(abs_path);}}
         ];
     } else {
         items = [
-            {txt:"Download",cb:()=>{window.open("/download?path="+encodeURIComponent(absPath));}},
-            {txt:"Rename",cb:()=>{ajaxRename(absPath, name, type);}},
-            {txt:"Delete",cb:()=>{ajaxDelete(absPath);}}
+            {txt:"Download",cb:()=>{window.open("/download?path="+encodeURIComponent(abs_path));}},
+            {txt:"Rename",cb:()=>{ajax_rename(abs_path, name, type);}},
+            {txt:"Delete",cb:()=>{ajax_delete(abs_path);}}
         ];
     }
     menu.html(items.map(e=>`<li>${e.txt}</li>`).join(""));
     menu.show().css({left:x, top:y});
     menu.children().each(function(idx, li){
         $(li).click(function(){
-            hideContextMenu(); items[idx].cb();
+            hide_context_menu(); items[idx].cb();
         });
     });
 }
-function hideContextMenu(){ $("#context-menu").hide();$(".selected").removeClass("selected"); }
-$(window).on("click scroll contextmenu", hideContextMenu);
+function hide_context_menu(){ $("#context-menu").hide();$(".selected").removeClass("selected"); }
+$(window).on("click scroll contextmenu", hide_context_menu);
 
-$("#btn-create-root-folder").click(function(){ ajaxCreateFolder(""); });         // "New" on root: create folder in root
-$("#btn-create-folder").click(function(){ ajaxCreateFolder(currentDirPath); });  // "New Folder" button: create in current folder
-$("#btn-upload").click(function(){
+$("#btn-create-folder").click(function(){ ajax_create_folder(current_dir_path); });
+$("#btn-upload").click(function() {
     let input = $("#input-upload-files")[0];
     if(!input.files.length) {alert("Please select files!"); return;}
     let fd = new FormData();
-    fd.append("path", currentDirPath);
+    fd.append("path", current_dir_path);
     for(let file of input.files)
         fd.append("files", file);
     $.ajax({
@@ -319,14 +312,14 @@ $("#btn-upload").click(function(){
         success:function(res){
             if(res.code) alert(res.msg);
             input.value = "";
-            reloadSidebarAndContent();
+            reload_sidebar_and_content();
         }
     });
 });
-$("#input-upload-files").on("change",()=>{}); // disables default reload on upload
-window.ondragover = window.ondragenter = window.ondragleave = window.ondrop = e=>{e.preventDefault();}; // Prevent default browser drag
+$("#input-upload-files").on("change",()=>{});
+window.ondragover = window.ondragenter = window.ondragleave = window.ondrop = e=>{e.preventDefault();};
 $(function(){
-    reloadSidebarAndContent();      // Initial load
+    reload_sidebar_and_content();
 });
 </script>
 </body>
@@ -335,9 +328,9 @@ $(function(){
 
 @app.route('/api/list')
 def api_list():
-    dir_rel = request.args.get("path","")                                 # Relative directory path from query
+    dir_rel = request.args.get("path","")
     abs_dir = safe_join(UPLOAD_ROOT, dir_rel)
-    if not os.path.exists(abs_dir):                                       # If path doesn't exist, error
+    if not os.path.exists(abs_dir):
         return jsonify({"code":1, "msg":"Directory not found"})
     dirs = []
     files = []
@@ -346,78 +339,85 @@ def api_list():
         p = os.path.join(abs_dir, name)
         if os.path.isdir(p): dirs.append(name)
         else: files.append(name)
-    return jsonify({"code":0, "dirs":dirs, "files":files})                # Return arrays of subdirectories & files
+    return jsonify({"code":0, "dirs":dirs, "files":files})
 
 @app.route('/api/tree')
 def api_tree():
-    return jsonify(make_dir_tree(UPLOAD_ROOT,""))                         # Return recursive directory tree
+    return jsonify(make_dir_tree(UPLOAD_ROOT,""))
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
-    rel_dir = request.form.get("path","")                                 # Get directory to upload into
+    rel_dir = request.form.get("path","")
     abs_dir = safe_join(UPLOAD_ROOT, rel_dir)
-    if not os.path.isdir(abs_dir):                                        # Check directory exists
+    if not os.path.isdir(abs_dir):
         return jsonify({"code":1,"msg":"Directory does not exist"})
     files = request.files.getlist("files")
-    for file in files:                                                    # Save all uploaded files
+    for file in files:
         filename = secure_filename(file.filename)
         file.save(os.path.join(abs_dir, filename))
     return jsonify({"code":0})
 
 @app.route('/api/delete', methods=['POST'])
 def api_delete():
-    rel_path = request.json.get("path","")                                # Get relative file or folder path
+    rel_path = request.json.get("path","")
     abs_path = safe_join(UPLOAD_ROOT, rel_path)
+    if not os.path.exists(abs_path):
+        return jsonify({"code":1,"msg":"Not found"})
     try:
         if os.path.isfile(abs_path):
-            os.remove(abs_path)                                           # Delete file
+            os.remove(abs_path)
         elif os.path.isdir(abs_path):
-            shutil.rmtree(abs_path)                                       # Delete folder recursively
+            if os.listdir(abs_path):
+                shutil.rmtree(abs_path)   # Recursively delete directory
+            else:
+                os.rmdir(abs_path)
         else:
             return jsonify({"code":1,"msg":"Not found"})
     except Exception as e:
         return jsonify({"code":1,"msg":"Delete failed:"+str(e)})
-    return jsonify({'code':0})                                            # Return success
+    return jsonify({'code':0})
 
 @app.route('/api/mkdir', methods=['POST'])
 def api_mkdir():
-    rel_dir = request.form.get("path","")                                 # Parent folder
+    rel_dir = request.form.get("path","")
     folder_name = request.form.get("name")
     if '/' in folder_name or '\\' in folder_name or not folder_name:
         return jsonify({"code":1, "msg":"Invalid folder name"})
     abs_dir = safe_join(UPLOAD_ROOT, rel_dir, folder_name)
     try:
-        os.makedirs(abs_dir)                                              # Create new folder
+        os.makedirs(abs_dir)
     except Exception as e:
         return jsonify({"code":1, "msg":"Create failed:"+str(e)})
     return jsonify({'code':0})
 
 @app.route('/api/move', methods=['POST'])
 def api_move():
-    src_rel = request.json.get("src","")                                  # Source path
-    dst_rel = request.json.get("dst","")                                  # Destination folder path
+    src_rel = request.json.get("src","")
+    dst_rel = request.json.get("dst","")
+    new_name = request.json.get("new_name")
     src_abs = safe_join(UPLOAD_ROOT, src_rel)
     dst_abs = safe_join(UPLOAD_ROOT, dst_rel)
-    item_name = os.path.basename(src_abs)
     if os.path.abspath(src_abs) == os.path.abspath(dst_abs):
         return jsonify({'code':1,'msg':'Source and destination are the same'})
     if os.path.isdir(src_abs) and os.path.abspath(dst_abs).startswith(os.path.abspath(src_abs)+os.sep):
         return jsonify({'code':1,'msg':'Cannot move into its own subfolder'})
+    # Determine target path
+    if new_name and new_name != os.path.basename(src_abs):
+        target_abs = safe_join(dst_abs, new_name)
+    else:
+        target_abs = safe_join(dst_abs, os.path.basename(src_abs))
+    if os.path.abspath(src_abs) == os.path.abspath(target_abs):
+        return jsonify({"code":1, "msg":"Nothing to do"})
+    if os.path.exists(target_abs):
+        return jsonify({"code":1, "msg":"Target already exists"})
     try:
-        if os.path.isfile(src_abs) or os.path.isdir(src_abs):
-            if os.path.dirname(src_rel) == dst_rel:
-                new_path = safe_join(UPLOAD_ROOT, dst_rel, request.json.get("new_name", item_name))
-                shutil.move(src_abs, new_path)                            # Rename
-            else:
-                shutil.move(src_abs, os.path.join(dst_abs, item_name))    # Move to destination
-        else:
-            return jsonify({'code':1,'msg':'Not found'})
+        shutil.move(src_abs, target_abs)
     except Exception as e:
         return jsonify({'code':1,'msg':'Move failed: '+str(e)})
     return jsonify({'code':0})
 
 @app.route('/download')
-def download():                                                           # Download file by path query
+def download():
     rel_path = request.args.get('path','')
     abs_path = safe_join(UPLOAD_ROOT, rel_path)
     if not os.path.isfile(abs_path):
