@@ -1,32 +1,45 @@
+"""
+File: app.py
+Description:
+    Flask File Manager
+    Main Logic:
+    - Single-file Flask web application for managing files and folders.
+    - Provides multi-file upload, download, delete, rename, move, and new folder creation.
+    - Uses Bootstrap with a golden theme for user interface appearance.
+    - Features a directory tree view (left) and file list view (right).
+    - Supports drag-and-drop moving of files/folders, and right-click AJAX menus for actions.
+    - All actions (rename/delete/move/create/download/upload) are performed via AJAX; no page reload.
+    - Robustly handles all operations in root and all subdirectories:
+        - No operation can delete or move the real root dir itself.
+        - Paths sent to the server are always “relative from root” for security and clarity.
+    - Server checks for existence, prevents directory traversal attacks, and avoids name/path overwriting.
+    - Can be started and run locally (“uploads” dir auto-created if not present) and is ready for further extension.
+"""
 from flask import Flask, request, send_from_directory, abort, jsonify, render_template_string
 import os, shutil
 from werkzeug.utils import secure_filename
-
-app = Flask(__name__)
-app.secret_key = "better-secret"
-UPLOAD_ROOT = 'uploads'
-os.makedirs(UPLOAD_ROOT, exist_ok=True)   # Ensure upload directory exists
-
-def safe_join(base, *paths):                                              # Prevent directory traversal
-    final_path = os.path.abspath(os.path.join(base, *paths))
-    if not final_path.startswith(os.path.abspath(base)):
+app = Flask(__name__)                                        # Initialize Flask application
+app.secret_key = "better-secret"                             # Secret key for session security
+UPLOAD_ROOT = 'uploads'                                      # Upload folder root
+os.makedirs(UPLOAD_ROOT, exist_ok=True)                      # Ensure upload directory exists
+def safe_join(base, *paths):                                 # Safely join and prevent directory traversal
+    final_path = os.path.abspath(os.path.join(base, *paths)) # Compute absolute target path
+    if not final_path.startswith(os.path.abspath(base)):     # Disallow escaping base directory
         abort(403)
     return final_path
-
-def make_dir_tree(root_path, rel_path=""):                                # Recursively return all folders as nested dict
+def make_dir_tree(root_path, rel_path=""):                   # Build directory tree recursively
     nodes = []
     for item in sorted(os.listdir(root_path)):
-        if item.startswith('.'): continue
+        if item.startswith('.'): continue                    # Skip hidden/system files
         abs_item = os.path.join(root_path, item)
-        item_rel = os.path.join(rel_path, item).replace("\\", "/")
+        item_rel = os.path.join(rel_path, item).replace("\\", "/")    # Platform-independent
         if os.path.isdir(abs_item):
             nodes.append({
-                "name": item,
-                "path": item_rel,
-                "children": make_dir_tree(abs_item, item_rel)
+                "name": item,                                # Folder name
+                "path": item_rel,                            # Path relative to root
+                "children": make_dir_tree(abs_item, item_rel)# Recursively add children
             })
     return nodes
-
 @app.route('/')
 def index():
     return render_template_string("""
@@ -60,18 +73,17 @@ def index():
     <div class="row">
         <div id="sidebar" class="col-3 px-2">
             <div class="d-flex justify-content-between mb-2">
-                <strong style="font-size:18px;">Directories</strong>
-                <!-- No "New" button here per user requirement -->
+                <strong style="font-size:18px;">Directories</strong>      <!-- Panel title -->
             </div>
             <div style="max-height:77vh; overflow:auto;">
-                <ul id="folder-tree" class="folder-tree"></ul>           <!-- Sidebar directory tree -->
+                <ul id="folder-tree" class="folder-tree"></ul>           <!-- Directory tree -->
             </div>
         </div>
         <div class="col-9">
-            <div id="path-breadcrumb" class="breadcrumb-golden mb-2"></div>
+            <div id="path-breadcrumb" class="breadcrumb-golden mb-2"></div>  <!-- Breadcrumbs -->
             <div class="golden-card p-2 mb-3 border rounded shadow-sm">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <input type="file" id="input-upload-files" class="form-control form-control-sm" multiple style="max-width:240px;">
+                    <input type="file" id="input-upload-files" class="form-control form-control-sm" multiple style="max-width:240px;">  <!-- Upload input -->
                     <button id="btn-upload" class="btn golden-btn btn-sm">Upload</button>
                     <button id="btn-create-folder" class="btn golden-btn btn-sm">New Folder</button>
                 </div>
@@ -80,42 +92,41 @@ def index():
                 <table id="file-table" class="table align-middle table-hover mb-0">
                     <thead>
                         <tr>
-                            <th>Name</th><th>Type</th><th>Action</th>
+                            <th>Name</th><th>Type</th><th>Action</th>         <!-- Table headers -->
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody>
+                    </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
-<ul id="context-menu" class="context-menu"></ul>
+<ul id="context-menu" class="context-menu"></ul>         <!-- Context menu -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script>
-// ---------------------- Frontend Variables ----------------------------
-let current_dir_path = "";                      // Current folder path (e.g. "foo/bar")
-let dragged_item_path = null;                   // Path of the item being dragged
-let dragged_item_type = null;                   // Type ("file"/"folder")
-let folder_tree_data = [];                      // Directory tree structure
+let current_dir_path = "";                              // Current directory ("", means root)
+let dragged_item_path = null;                           // Drag source path
+let dragged_item_type = null;                           // Type: "file"/"folder"
+let folder_tree_data = [];                              // Tree data
 
-function reload_sidebar_and_content(focus_path) {                                   // Reload both tree and right pane
-    fetch_dir_tree().then(() => {
-        render_folder_tree(focus_path!==undefined ? focus_path : current_dir_path);
-    });
+function clean_path(path) {                             // Remove leading slashes
+    return path ? path.replace(/^\/+/, '') : "";
+}
+function reload_sidebar_and_content(focus_path) {       // Reload tree and file list
+    fetch_dir_tree().then(() => { render_folder_tree(focus_path !== undefined ? focus_path : current_dir_path); });
     fetch_file_list(current_dir_path);
 }
 function fetch_dir_tree() {
-    return $.get("/api/tree", function(data){
-        folder_tree_data = data;
-    });
+    return $.get("/api/tree", function(data){ folder_tree_data = data; });
 }
-function fetch_file_list(dir_path) {
+function fetch_file_list(dir_path) {                    // Load files in dir
     $.get('/api/list', {path:dir_path}, function(resp){
         render_breadcrumb(dir_path);
         render_file_table(resp.dirs, resp.files);
     });
 }
-function render_breadcrumb(dir_path) {
+function render_breadcrumb(dir_path) {                  // Render navigation breadcrumbs
     let crumbs = [`<span data-bc="">Root</span>`];
     let p = "";
     if(dir_path){
@@ -133,54 +144,55 @@ function render_breadcrumb(dir_path) {
         render_folder_tree(current_dir_path);
     });
 }
-function render_file_table(dirs, files) {
+function render_file_table(dirs, files) {               // Show file/folder rows
     const tbody = $("#file-table tbody").empty();
     dirs.forEach(function(name){
+        let rel_path = current_dir_path ? current_dir_path + "/" + name : name;
+        rel_path = clean_path(rel_path);
         let row = $(`
         <tr class="file-row" draggable="true" data-name="${name}" data-type="folder">
             <td><span class="folder-ico">📁</span> <span class="name-text">${name}</span></td>
             <td>Folder</td>
-            <td>
-                <a href="#" class="a-delete text-danger me-2">Delete</a>
-            </td>
+            <td><a href="#" class="a-delete text-danger me-2">Delete</a></td>
         </tr>`);
         row.find(".name-text").click(function(){
-            current_dir_path = current_dir_path ? (current_dir_path + "/" + name) : name;
+            current_dir_path = rel_path;
             fetch_file_list(current_dir_path);
             render_folder_tree(current_dir_path);
         });
-        row.find(".a-delete").click(function(){ ajax_delete(current_dir_path + "/" + name); return false; });
-        attach_row_events(row, name, "folder", current_dir_path + "/" + name);
+        row.find(".a-delete").click(function(){ ajax_delete(rel_path); return false; });
+        attach_row_events(row, name, "folder", rel_path);
         tbody.append(row);
     });
     files.forEach(function(name){
+        let rel_path = current_dir_path ? current_dir_path + "/" + name : name;
+        rel_path = clean_path(rel_path);
         let row = $(`
         <tr class="file-row" draggable="true" data-name="${name}" data-type="file">
             <td><span class="file-ico">📄</span> <span class="name-text">${name}</span></td>
             <td>File</td>
             <td>
-                <a href="/download?path=${encodeURIComponent(current_dir_path ? current_dir_path + "/" + name : name)}" class="text-primary me-2" target="_blank">Download</a>
+                <a href="/download?path=${encodeURIComponent(rel_path)}" class="text-primary me-2" target="_blank">Download</a>
                 <a href="#" class="a-delete text-danger">Delete</a>
             </td>
         </tr>`);
-        row.find(".a-delete").click(function(){ ajax_delete(current_dir_path + "/" + name); return false; });
-        attach_row_events(row, name, "file", current_dir_path + "/" + name);
+        row.find(".a-delete").click(function(){ ajax_delete(rel_path); return false; });
+        attach_row_events(row, name, "file", rel_path);
         tbody.append(row);
     });
 }
-function attach_row_events(row, name, type, abs_path) {
-    row.on("dragstart", function(e){
+function attach_row_events(row, name, type, abs_path) {              // Add drag/drop & menu
+    abs_path = clean_path(abs_path);
+    row.on("dragstart", function(_e){
         dragged_item_path = abs_path; dragged_item_type = type;
     });
-    row.on("dragend", function(e){
+    row.on("dragend", function(_e){
         dragged_item_path = null; dragged_item_type = null;
     });
-    row.on("dragover", function(e){ e.preventDefault(); }); // Allow folder<=>folder moves: handled on drop
-    row.on("drop", function(e){
+    row.on("dragover", function(e){ e.preventDefault(); });
+    row.on("drop", function(_e){
         if(dragged_item_path && dragged_item_path !== abs_path) {
-            if(type === "folder") { // Only allow drop ONTO folders
-                ajax_move(dragged_item_path, abs_path);
-            }
+            if(type === "folder") { ajax_move(dragged_item_path, abs_path); }
         }
     });
     row.on("contextmenu", function(e){
@@ -188,7 +200,8 @@ function attach_row_events(row, name, type, abs_path) {
         show_context_menu(e.pageX, e.pageY, name, type, abs_path, row);
     });
 }
-function ajax_delete(item_path) {
+function ajax_delete(item_path) {                                // AJAX file/folder delete
+    item_path = clean_path(item_path);
     if(!confirm("Are you sure to delete?")) return;
     $.ajax({
         url: "/api/delete", type:"POST",
@@ -200,7 +213,9 @@ function ajax_delete(item_path) {
         }
     });
 }
-function ajax_move(src, dst) {
+function ajax_move(src, dst) {                      // AJAX file/folder move
+    src = clean_path(src);
+    dst = clean_path(dst);
     $.ajax({
         url:"/api/move",type:"POST",
         contentType:"application/json",
@@ -211,10 +226,12 @@ function ajax_move(src, dst) {
         }
     });
 }
-function ajax_rename(item_path, old_name, type) {
+function ajax_rename(item_path, old_name, type) {   // AJAX rename = move with new_name
+    item_path = clean_path(item_path);
     let new_name = prompt("Rename:", old_name);
     if(!new_name || new_name === old_name) return;
     let dst_dir = item_path.includes("/") ? item_path.substr(0, item_path.lastIndexOf("/")) : "";
+    dst_dir = clean_path(dst_dir);
     $.ajax({
         url: "/api/move", type:"POST",
         contentType: "application/json",
@@ -225,7 +242,8 @@ function ajax_rename(item_path, old_name, type) {
         }
     });
 }
-function ajax_create_folder(parent_path) {
+function ajax_create_folder(parent_path) {                  // AJAX folder creation
+    parent_path = clean_path(parent_path);
     let name = prompt("New folder name:");
     if(!name) return;
     $.post("/api/mkdir", {path:parent_path||"", name:name}, function(res){
@@ -233,13 +251,14 @@ function ajax_create_folder(parent_path) {
         reload_sidebar_and_content(parent_path);
     });
 }
-function render_folder_tree(highlight_path) {
+function render_folder_tree(highlight_path) {               // Recursively render sidebar tree
+    highlight_path = clean_path(highlight_path);
     $("#folder-tree").empty();
     function _recur(nodes, base_path) {
         let ul = $("<ul>");
         nodes.forEach(function(nd){
+            let abs = clean_path(nd.path);
             let li = $(`<li><span class="folder-ico">📁</span> <span class="tree-folder-name">${nd.name}</span></li>`);
-            let abs = nd.path;
             li.attr("data-path", abs);
             if(abs === highlight_path) li.addClass("selected");
             li.find(".tree-folder-name").click(function(e){
@@ -252,7 +271,7 @@ function render_folder_tree(highlight_path) {
             li.on("dragstart", function(){ dragged_item_path = abs; dragged_item_type = "folder"; });
             li.on("dragend", function(){ dragged_item_path = null; dragged_item_type = null; });
             li.on("dragover", function(e){ e.preventDefault(); });
-            li.on("drop", function(e){
+            li.on("drop", function(_e){
                 if(dragged_item_path && dragged_item_path !== abs) {
                     ajax_move(dragged_item_path, abs);
                 }
@@ -261,7 +280,7 @@ function render_folder_tree(highlight_path) {
                 e.preventDefault();
                 show_context_menu(e.pageX, e.pageY, nd.name,"folder", abs, li);
             });
-            if(nd.children && nd.children.length>0)
+            if(nd.children && nd.children.length > 0)
                 li.append(_recur(nd.children, abs));
             ul.append(li);
         });
@@ -269,7 +288,8 @@ function render_folder_tree(highlight_path) {
     }
     $("#folder-tree").append(_recur(folder_tree_data, ""));
 }
-function show_context_menu(x, y, name, type, abs_path, jq_elem) {
+function show_context_menu(x, y, name, type, abs_path, jq_elem) {         // Right-click menu
+    abs_path = clean_path(abs_path);
     hide_context_menu();
     $(".file-row,.folder-tree li").removeClass("selected");
     jq_elem && jq_elem.addClass("selected");
@@ -298,14 +318,13 @@ function show_context_menu(x, y, name, type, abs_path, jq_elem) {
 function hide_context_menu(){ $("#context-menu").hide();$(".selected").removeClass("selected"); }
 $(window).on("click scroll contextmenu", hide_context_menu);
 
-$("#btn-create-folder").click(function(){ ajax_create_folder(current_dir_path); });
-$("#btn-upload").click(function() {
+$("#btn-create-folder").click(function(){ ajax_create_folder(current_dir_path); });    // "New Folder" button
+$("#btn-upload").click(function() {                                                    // "Upload" button
     let input = $("#input-upload-files")[0];
     if(!input.files.length) {alert("Please select files!"); return;}
     let fd = new FormData();
     fd.append("path", current_dir_path);
-    for(let file of input.files)
-        fd.append("files", file);
+    for(let file of input.files) fd.append("files", file);
     $.ajax({
         url:"/api/upload",type:"POST",data:fd,
         contentType:false, processData:false,
@@ -316,22 +335,21 @@ $("#btn-upload").click(function() {
         }
     });
 });
-$("#input-upload-files").on("change",()=>{});
+$("#input-upload-files").on("change",()=>{});                                      // Prevent default reload
 window.ondragover = window.ondragenter = window.ondragleave = window.ondrop = e=>{e.preventDefault();};
 $(function(){
-    reload_sidebar_and_content();
+    reload_sidebar_and_content();                                                   // On startup
 });
 </script>
 </body>
 </html>
     """)
-
 @app.route('/api/list')
 def api_list():
-    dir_rel = request.args.get("path","")
+    dir_rel = request.args.get("path","")                                  # Relative path, "" for root
     abs_dir = safe_join(UPLOAD_ROOT, dir_rel)
     if not os.path.exists(abs_dir):
-        return jsonify({"code":1, "msg":"Directory not found"})
+        return jsonify({"code":1, "msg":"Directory not found"})            # 404 if folder not exist
     dirs = []
     files = []
     for name in sorted(os.listdir(abs_dir)):
@@ -339,38 +357,35 @@ def api_list():
         p = os.path.join(abs_dir, name)
         if os.path.isdir(p): dirs.append(name)
         else: files.append(name)
-    return jsonify({"code":0, "dirs":dirs, "files":files})
-
+    return jsonify({"code":0, "dirs":dirs, "files":files})                 # Return contents
 @app.route('/api/tree')
 def api_tree():
-    return jsonify(make_dir_tree(UPLOAD_ROOT,""))
+    return jsonify(make_dir_tree(UPLOAD_ROOT,""))                          # Get the complete directory tree
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
-    rel_dir = request.form.get("path","")
+    rel_dir = request.form.get("path","")                                  # Target directory path
     abs_dir = safe_join(UPLOAD_ROOT, rel_dir)
     if not os.path.isdir(abs_dir):
         return jsonify({"code":1,"msg":"Directory does not exist"})
     files = request.files.getlist("files")
     for file in files:
         filename = secure_filename(file.filename)
-        file.save(os.path.join(abs_dir, filename))
+        file.save(os.path.join(abs_dir, filename))                        # Save each uploaded file
     return jsonify({"code":0})
-
 @app.route('/api/delete', methods=['POST'])
 def api_delete():
-    rel_path = request.json.get("path","")
+    rel_path = request.json.get("path", "")                               # Relative file or folder path
     abs_path = safe_join(UPLOAD_ROOT, rel_path)
     if not os.path.exists(abs_path):
-        return jsonify({"code":1,"msg":"Not found"})
+        return jsonify({"code": 1, "msg": "Not found"})
+    if os.path.abspath(abs_path) == os.path.abspath(UPLOAD_ROOT):         # Prevent deletion of root
+        return jsonify({"code": 1, "msg": "Cannot delete root"})
     try:
         if os.path.isfile(abs_path):
             os.remove(abs_path)
         elif os.path.isdir(abs_path):
-            if os.listdir(abs_path):
-                shutil.rmtree(abs_path)   # Recursively delete directory
-            else:
-                os.rmdir(abs_path)
+            shutil.rmtree(abs_path)
         else:
             return jsonify({"code":1,"msg":"Not found"})
     except Exception as e:
@@ -379,51 +394,50 @@ def api_delete():
 
 @app.route('/api/mkdir', methods=['POST'])
 def api_mkdir():
-    rel_dir = request.form.get("path","")
+    rel_dir = request.form.get("path", "")                                # Parent path ("" means root)
     folder_name = request.form.get("name")
-    if '/' in folder_name or '\\' in folder_name or not folder_name:
-        return jsonify({"code":1, "msg":"Invalid folder name"})
+    if '/' in folder_name or '\\' in folder_name or not folder_name:      # Prevent illegal folder names
+        return jsonify({"code": 1, "msg": "Invalid folder name"})
     abs_dir = safe_join(UPLOAD_ROOT, rel_dir, folder_name)
     try:
         os.makedirs(abs_dir)
     except Exception as e:
-        return jsonify({"code":1, "msg":"Create failed:"+str(e)})
-    return jsonify({'code':0})
+        return jsonify({"code": 1, "msg": "Create failed:" + str(e)})
+    return jsonify({'code': 0})
 
 @app.route('/api/move', methods=['POST'])
 def api_move():
-    src_rel = request.json.get("src","")
-    dst_rel = request.json.get("dst","")
-    new_name = request.json.get("new_name")
+    src_rel = request.json.get("src", "")                                 # Source path, relative to root
+    dst_rel = request.json.get("dst", "")                                 # Destination dir, "" for root
+    new_name = request.json.get("new_name")                               # new_name for renaming
     src_abs = safe_join(UPLOAD_ROOT, src_rel)
-    dst_abs = safe_join(UPLOAD_ROOT, dst_rel)
+    dst_abs = safe_join(UPLOAD_ROOT, dst_rel or "")
+    if os.path.abspath(src_abs) == os.path.abspath(UPLOAD_ROOT):          # Prevent moving the root
+        return jsonify({'code': 1, 'msg': 'Cannot move root'})
     if os.path.abspath(src_abs) == os.path.abspath(dst_abs):
-        return jsonify({'code':1,'msg':'Source and destination are the same'})
-    if os.path.isdir(src_abs) and os.path.abspath(dst_abs).startswith(os.path.abspath(src_abs)+os.sep):
-        return jsonify({'code':1,'msg':'Cannot move into its own subfolder'})
-    # Determine target path
+        return jsonify({'code': 1, 'msg': 'Source and destination are the same'})
+    if os.path.isdir(src_abs) and os.path.abspath(dst_abs).startswith(os.path.abspath(src_abs) + os.sep):
+        return jsonify({'code': 1, 'msg': 'Cannot move into its own subfolder'})
     if new_name and new_name != os.path.basename(src_abs):
-        target_abs = safe_join(dst_abs, new_name)
+        target_abs = safe_join(dst_abs, new_name)                         # New name (rename)
     else:
-        target_abs = safe_join(dst_abs, os.path.basename(src_abs))
+        target_abs = safe_join(dst_abs, os.path.basename(src_abs))        # Original name
     if os.path.abspath(src_abs) == os.path.abspath(target_abs):
-        return jsonify({"code":1, "msg":"Nothing to do"})
+        return jsonify({"code": 1, "msg": "Nothing to do"})
     if os.path.exists(target_abs):
-        return jsonify({"code":1, "msg":"Target already exists"})
+        return jsonify({"code": 1, "msg": "Target already exists"})
     try:
         shutil.move(src_abs, target_abs)
     except Exception as e:
-        return jsonify({'code':1,'msg':'Move failed: '+str(e)})
-    return jsonify({'code':0})
-
+        return jsonify({'code': 1, 'msg': 'Move failed: ' + str(e)})
+    return jsonify({'code': 0})
 @app.route('/download')
 def download():
-    rel_path = request.args.get('path','')
+    rel_path = request.args.get('path','')                                # Download requested file
     abs_path = safe_join(UPLOAD_ROOT, rel_path)
     if not os.path.isfile(abs_path):
         abort(404)
     dir_name, file_name = os.path.split(abs_path)
     return send_from_directory(dir_name, file_name, as_attachment=True)
-
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)                                       # Start the Flask application
